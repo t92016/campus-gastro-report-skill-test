@@ -1,10 +1,5 @@
-# Google Apps Script
-*.gs
-# 讓 Git 追蹤 GAS 原始碼，改用目錄白名單方式
-# 排除 GAS 自動產生的檔案
-appsscript.json
-.clasp.json
-.claspignore
+# Google Apps Script 追蹤原始碼
+# 不要用 *.gs 排除，因為 Code.gs 就是要追蹤的
 
 # OS
 Thumbs.db
