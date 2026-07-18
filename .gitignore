@@ -1,0 +1,20 @@
+# Google Apps Script
+*.gs
+# 讓 Git 追蹤 GAS 原始碼，改用目錄白名單方式
+# 排除 GAS 自動產生的檔案
+appsscript.json
+.clasp.json
+.claspignore
+
+# OS
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# Obsidian
+.obsidian/
+.trash/
+
+# Temp
+*.tmp
+*.log
