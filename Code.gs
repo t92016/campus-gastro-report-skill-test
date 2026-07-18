@@ -55,8 +55,6 @@ const HEADER_NAMES = {
   GENDER: '性別',
   CONTACT: '家人稱謂及緊急聯絡電話',
   SYMPTOM: '身體症狀',
-  HEIGHT: '身高',
-  WEIGHT: '體重',
   CASE_ID: '案件編號',
   SORT_KEY: '排序值',
   TRIAGE: '檢傷初判',
@@ -161,6 +159,22 @@ function gradeToNumber_(gradeText) {
 
 
 // ============================================================
+// ★【清理用：刪除表單中身高體重題目】解決 relinkFormToSheet 造成的試算表錯亂後執行
+function removeHeightWeightFromForm() {
+  const form = FormApp.openById(FORM_ID);
+  const items = form.getItems();
+
+  // 從後往前刪
+  for (let i = items.length - 1; i >= 0; i--) {
+    const title = items[i].getTitle();
+    if (title === '身高' || title === '體重') {
+      form.deleteItem(i);
+      Logger.log('已刪除：' + title + '（第 ' + i + ' 項）');
+    }
+  }
+  Logger.log('表格身高體重題目清理完成。');
+}
+
 // ★【步驟 A：請執行一次】建立 Google 表單（含性別題目）
 // ============================================================
 function createReportForm() {
@@ -213,155 +227,6 @@ function createReportForm() {
 
 
 // ============================================================
-// ★【追加欄位：請執行一次】在已建立的表單中新增「身高」「體重」兩題
-function addHeightWeightQuestions() {
-  const form = FormApp.openById(FORM_ID);
-
-  // 防呆：如果已有身高或體重題目，略過不重複新增
-  const existingTitles = form.getItems().map(function (item) { return item.getTitle(); });
-  if (existingTitles.indexOf('身高') !== -1 && existingTitles.indexOf('體重') !== -1) {
-    Logger.log('身高、體重題目已存在，略過新增。如需調整位置請先執行 removeDuplicateHeightWeight。');
-    return;
-  }
-
-  form.addTextItem()
-    .setTitle('身高')
-    .setHelpText('單位：公分，請輸入數字')
-    .setRequired(true);
-
-  form.addTextItem()
-    .setTitle('體重')
-    .setHelpText('單位：公斤，請輸入數字')
-    .setRequired(true);
-
-  const items = form.getItems();
-  const heightItem = items[items.length - 2];
-  const weightItem = items[items.length - 1];
-  // 移動到「性別」之後（題目順序：年級、班級、座號、姓名、性別、身高、體重、聯絡電話、身體症狀）
-  form.moveItem(heightItem, 5);
-  form.moveItem(weightItem, 6);
-
-  Logger.log('已新增「身高」「體重」兩題，並移動到性別之後。');
-  Logger.log('⚠ 新欄位在試算表仍會出現在最後兩欄（Google 表單行為，不影響系統）。');
-}
-
-// ★【出現重複身高體重時請執行】刪除多餘的身高體重題目，只保留各一題
-function removeDuplicateHeightWeight() {
-  const form = FormApp.openById(FORM_ID);
-  const items = form.getItems();
-
-  // 找出第一題「身高」和第一題「體重」的索引（保留這些，刪除其餘的）
-  let firstHeightIdx = -1, firstWeightIdx = -1;
-  for (let i = 0; i < items.length; i++) {
-    const t = items[i].getTitle();
-    if (t === '身高' && firstHeightIdx === -1) firstHeightIdx = i;
-    if (t === '體重' && firstWeightIdx === -1) firstWeightIdx = i;
-  }
-
-  let deleted = 0;
-  // 從後往前刪（避免索引偏移），跳過第一題身高和第一題體重
-  for (let i = items.length - 1; i >= 0; i--) {
-    const t = items[i].getTitle();
-    if (t === '身高' && i !== firstHeightIdx) { form.deleteItem(i); deleted++; }
-    if (t === '體重' && i !== firstWeightIdx) { form.deleteItem(i); deleted++; }
-  }
-
-  Logger.log('已刪除 ' + deleted + ' 個重複的身高/體重題目。');
-}
-
-// ★【身高體重資料沒出現在試算表時請執行】還原正確欄位
-function restoreHeightWeightColumns() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const mainSheet = ss.getSheetByName(SHEET_MAIN);
-  const lastCol = mainSheet.getLastColumn();
-
-  // 1. 先取消隱藏所有欄位
-  mainSheet.showColumns(1, lastCol);
-
-  // 2. 讀取標題列
-  const headerRow = mainSheet.getRange(1, 1, 1, lastCol).getValues()[0];
-
-  // 3. 找出所有「身高」「體重」的欄位位置（從後往前找，最後面的是接收表單資料的）
-  let realHeightCol = -1, realWeightCol = -1;
-  for (let i = lastCol - 1; i >= 0; i--) {
-    const t = String(headerRow[i] || '').trim();
-    if (t === '身高' && realHeightCol === -1) realHeightCol = i + 1;
-    if (t === '體重' && realWeightCol === -1) realWeightCol = i + 1;
-  }
-
-  // 4. 把不是最後一個的、或是被改名為 _重複_已隱藏 的都隱藏
-  let fixed = 0;
-  for (let i = 0; i < lastCol; i++) {
-    const t = String(headerRow[i] || '').trim();
-    const col = i + 1;
-    if (t === '身高' && col !== realHeightCol) {
-      mainSheet.getRange(1, col).setValue('_重複_已隱藏');
-      mainSheet.hideColumns(col);
-      fixed++;
-    } else if (t === '_重複_已隱藏' && col !== realHeightCol && col !== realWeightCol) {
-      mainSheet.hideColumns(col);
-    } else if (t === '體重' && col !== realWeightCol) {
-      mainSheet.getRange(1, col).setValue('_重複_已隱藏');
-      mainSheet.hideColumns(col);
-      fixed++;
-    } else if (t === '_重複_已隱藏') {
-      // 把之前錯改名的那欄恢復成正確標題
-      if (col === realHeightCol) {
-        mainSheet.getRange(1, col).setValue('身高');
-        fixed++;
-      } else if (col === realWeightCol) {
-        mainSheet.getRange(1, col).setValue('體重');
-        fixed++;
-      }
-    }
-  }
-
-  Logger.log('已修正身高體重欄位，共修復 ' + fixed + ' 處。表單新送出的資料將會出現在正確欄位。');
-}
-
-// ★【試算表出現重複欄位標題時請執行】刪除彙整總表中重複的欄位（保留最後一欄——接收表單資料的那欄）
-function cleanupDuplicateSheetColumns() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const mainSheet = ss.getSheetByName(SHEET_MAIN);
-  const lastCol = mainSheet.getLastColumn();
-  if (lastCol < 2) return;
-
-  const headerRow = mainSheet.getRange(1, 1, 1, lastCol).getValues()[0];
-
-  // 找出每個標題「最後一次出現」的欄位（Google 表單永遠寫到最後面）
-  const lastOccurrence = {};
-  headerRow.forEach(function (text, idx) {
-    const t = String(text || '').trim();
-    if (t && t !== '_重複_已隱藏') lastOccurrence[t] = idx + 1;
-  });
-
-  // 把不是「最後一次出現」的重複欄位隱藏
-  const duplicates = [];
-  const firstSeen = {};
-  headerRow.forEach(function (text, idx) {
-    const t = String(text || '').trim();
-    if (!t || t === '_重複_已隱藏') return;
-    if (firstSeen[t] === undefined) {
-      firstSeen[t] = idx + 1;
-    } else if (idx + 1 !== lastOccurrence[t]) {
-      duplicates.push(idx + 1);
-    }
-  });
-
-  if (duplicates.length === 0) {
-    Logger.log('沒有重複的欄位標題，試算表結構正常。');
-    return;
-  }
-
-  duplicates.forEach(function (col) {
-    mainSheet.getRange(1, col).setValue('_重複_已隱藏');
-    mainSheet.hideColumns(col);
-    Logger.log('已隱藏重複欄位：第 ' + col + ' 欄');
-  });
-
-  Logger.log('清理完成，共隱藏 ' + duplicates.length + ' 個重複欄位。');
-}
-
 // ★【步驟 B：請執行】初始化試算表結構
 // ============================================================
 function setupSpreadsheet() {
@@ -880,8 +745,7 @@ function adminUpdateCase(pwd, caseId, fields) {
     grade: COL.GRADE, classNo: COL.CLASS, seatNo: COL.SEAT, name: COL.NAME,
     gender: COL.GENDER, contact: COL.CONTACT, symptom: COL.SYMPTOM,
     triage: COL.TRIAGE, location: COL.LOCATION, hospital: COL.HOSPITAL,
-    escort: COL.ESCORT, note: COL.NOTE,
-    height: COL.HEIGHT, weight: COL.WEIGHT
+    escort: COL.ESCORT, note: COL.NOTE
   };
   Object.keys(fieldColMap).forEach(function (key) {
     if (fields[key] !== undefined) {
@@ -914,8 +778,6 @@ function adminAddCase(pwd, fields) {
   newRow[COL.GENDER - 1] = fields.gender || '';
   newRow[COL.CONTACT - 1] = fields.contact || '';
   newRow[COL.SYMPTOM - 1] = fields.symptom || '';
-  newRow[COL.HEIGHT - 1] = fields.height || '';
-  newRow[COL.WEIGHT - 1] = fields.weight || '';
   newRow[COL.CASE_ID - 1] = caseId;
   newRow[COL.SORT_KEY - 1] = sortKey;
   newRow[COL.STATUS - 1] = '檢傷中';
@@ -1311,8 +1173,6 @@ function buildAdminHtml_() {
 '        <div><label>姓名</label><input type="text" id="f_name"></div>' +
 '        <div><label>性別</label><input type="text" id="f_gender" placeholder="男/女"></div>' +
 '        <div><label>聯絡電話</label><input type="text" id="f_contact"></div>' +
-'        <div><label>身高</label><input type="text" id="f_height" placeholder="公分"></div>' +
-'        <div><label>體重</label><input type="text" id="f_weight" placeholder="公斤"></div>' +
 '      </div>' +
 '      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">' +
 '        <div><label>身體症狀</label><input type="text" id="f_symptom"></div>' +
@@ -1368,7 +1228,7 @@ function buildAdminHtml_() {
 '  editMode = "add";' +
 '  editingCaseId = "";' +
 '  document.getElementById("editTitle").textContent = "新增案件";' +
-'  ["f_grade","f_class","f_seat","f_name","f_gender","f_contact","f_height","f_weight","f_symptom","f_triage","f_location","f_hospital","f_escort","f_note"].forEach(function(id){ document.getElementById(id).value = ""; });' +
+'  ["f_grade","f_class","f_seat","f_name","f_gender","f_contact","f_symptom","f_triage","f_location","f_hospital","f_escort","f_note"].forEach(function(id){ document.getElementById(id).value = ""; });' +
 '  document.getElementById("editCard").classList.remove("hidden");' +
 '}' +
 'function openEditForm(caseId){' +
@@ -1385,8 +1245,6 @@ function buildAdminHtml_() {
 '      document.getElementById("f_name").value = c.name || "";' +
 '      document.getElementById("f_gender").value = c.gender || "";' +
 '      document.getElementById("f_contact").value = c.contact || "";' +
-'      document.getElementById("f_height").value = c.height || "";' +
-'      document.getElementById("f_weight").value = c.weight || "";' +
 '      document.getElementById("f_symptom").value = c.symptom || "";' +
 '      document.getElementById("f_triage").value = c.triage || "";' +
 '      document.getElementById("f_location").value = c.location || "";' +
@@ -1408,8 +1266,6 @@ function buildAdminHtml_() {
 '    name: document.getElementById("f_name").value,' +
 '    gender: document.getElementById("f_gender").value,' +
 '    contact: document.getElementById("f_contact").value,' +
-'    height: document.getElementById("f_height").value,' +
-'    weight: document.getElementById("f_weight").value,' +
 '    symptom: document.getElementById("f_symptom").value,' +
 '    triage: document.getElementById("f_triage").value,' +
 '    location: document.getElementById("f_location").value,' +
