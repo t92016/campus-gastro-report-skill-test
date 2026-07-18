@@ -28,8 +28,8 @@
 
 | 項目 | 位置 |
 |------|------|
-| GitHub repo | （待建立） |
-| Obsidian 筆記 | （待建立） |
+| GitHub repo | `t92016/campus-gastro-report-skill-test`（私有） |
+| Obsidian 筆記 | `小工具開發/校園腸胃不適通報_skill測試.md` |
 
 ---
 
