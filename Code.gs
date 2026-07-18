@@ -773,6 +773,45 @@ function adminAddCase(pwd, fields) {
   return { success: true, caseId: caseId };
 }
 
+/**
+ * 清理用：刪除彙整總表中所有案件編號為空白的列（幽靈資料），
+ * 以及同名重複的資料（保留第一筆）。
+ * 操作完成後會自動全站同步。
+ */
+function cleanupEmptyAndDupCases() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const mainSheet = ss.getSheetByName(SHEET_MAIN);
+  const COL = getMainColMap_(mainSheet);
+  const lastRow = mainSheet.getLastRow();
+  if (lastRow < 2) return { deleted: 0 };
+
+  // 從最後一列往上刪（避免刪除後列號偏移）
+  const deleted = [];
+  const seenNames = {};
+
+  for (let r = lastRow; r >= 2; r--) {
+    const caseId = mainSheet.getRange(r, COL.CASE_ID).getValue();
+    const name = String(mainSheet.getRange(r, COL.NAME).getValue() || '').trim();
+
+    if (!caseId) {
+      // 案件編號空白 → 刪除
+      mainSheet.deleteRow(r);
+      deleted.push({ row: r, name: name || '(empty)', reason: 'no_caseId' });
+    } else if (name) {
+      // 檢查是否為同名重複
+      if (seenNames[name]) {
+        mainSheet.deleteRow(r);
+        deleted.push({ row: r, name: name, caseId: caseId, reason: 'duplicate' });
+      } else {
+        seenNames[name] = true;
+      }
+    }
+  }
+
+  syncDerivedSheets();
+  return { deleted: deleted.length, details: deleted };
+}
+
 function adminDeleteCase(pwd, caseId) {
   if (!verifyAdminPassword(pwd)) throw new Error('管理者密碼錯誤。');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
