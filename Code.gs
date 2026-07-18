@@ -885,6 +885,28 @@ function buildHomeHtml_() {
 '  .search-bar button.secondary { background:' + THEME.secondaryBg + '; color:' + THEME.secondaryText + '; }' +
 '  .refresh-icon { width:34px; height:34px; border-radius:50%; border:1px solid ' + THEME.border + '; background:#fff; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center; }' +
 '  .refresh-icon:hover { background:' + THEME.altRow + '; }' +
+'  @media screen and (max-width: 768px) {' +
+'    html, body { overflow-x: hidden !important; width: 100vw !important; margin: 0; padding: 0; }' +
+'    .container { width: 100% !important; max-width: 100vw !important; padding: 10px !important; box-sizing: border-box !important; }' +
+'    #view-search table, #view-search thead, #view-search tbody, #view-search tr, #view-search td { display: flex !important; flex-direction: column !important; width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; min-width: 0 !important; }' +
+'    #view-search thead { display: none !important; }' +
+'    #view-search tr { display: block !important; border: 1px solid ' + THEME.border + '; border-radius: 12px; margin-bottom: 18px !important; background-color: #fff; box-shadow: 0 4px 10px rgba(100,60,140,0.08); padding: 6px !important; overflow: hidden !important; }' +
+'    #view-search td { display: flex !important; flex-direction: row !important; justify-content: flex-start !important; align-items: flex-start !important; text-align: left !important; border: none !important; border-bottom: 1px solid ' + THEME.border + ' !important; padding: 10px 10px 10px 120px !important; position: relative; min-height: 42px; word-break: break-all !important; white-space: normal !important; font-size: 0.92em; color: #444; line-height: 1.4; }' +
+'    #view-search td:last-child { border-bottom: none !important; }' +
+'    #view-search td:before { content: attr(data-label); position: absolute; left: 10px; font-weight: bold; color: ' + THEME.badge + '; font-size: 0.85em; text-align: left; white-space: nowrap; }' +
+'    #view-search tr:last-child { margin-bottom: 100px !important; }' +
+'    #view-search td:nth-of-type(1):before { content: "班級-座號"; }' +
+'    #view-search td:nth-of-type(2):before { content: "姓名"; }' +
+'    #view-search td:nth-of-type(3):before { content: "性別"; }' +
+'    #view-search td:nth-of-type(4):before { content: "狀態"; }' +
+'    #view-search td:nth-of-type(5):before { content: "休息觀察"; }' +
+'    #view-search td:nth-of-type(6):before { content: "送醫醫院"; }' +
+'    #view-search td:nth-of-type(7):before { content: "家長帶離"; }' +
+'    #view-search td:nth-of-type(8):before { content: "出院時間"; }' +
+'    .banner { padding: 16px 20px; }' +
+'    .banner h1 { font-size: 1.2rem; }' +
+'    .banner .logo { width: 48px; height: 48px; font-size: 22px; }' +
+'  }' +
 '</style></head><body>' +
 '  <div class="banner">' +
 '    <div class="logo">' + (SCHOOL_LOGO_BASE64 ? ('<img src="data:image/png;base64,' + SCHOOL_LOGO_BASE64 + '" style="width:100%;height:100%;object-fit:contain;padding:6px;">') : '<span style="font-size:28px;">🏫</span>') + '</div>' +
@@ -929,15 +951,15 @@ function buildHomeHtml_() {
 '  var rows = homeData.rows.filter(function(r){ return passesFilter(r, kw, statusFilter); });' +
 '  var wrap = document.getElementById("tableWrap");' +
 '  if (!rows.length) { wrap.innerHTML = "<div class=\\"empty\\">查無符合條件的資料</div>"; return; }' +
-'  var html = "<table><thead><tr><th>班級-座號</th><th>姓名</th><th>性別</th><th>狀態</th>" +' +
+'  var html = "<div id=\\"view-search\\"><table><thead><tr><th>班級-座號</th><th>姓名</th><th>性別</th><th>狀態</th>" +' +
 '    "<th>休息觀察</th><th>送醫醫院</th><th>家長帶離</th><th>出院時間</th></tr></thead><tbody>";' +
 '  rows.forEach(function(r){' +
-'    html += "<tr><td>"+escHtml(r.classSeat)+"</td><td>"+escHtml(r.name)+"</td><td>"+escHtml(r.gender||"")+"</td>" +' +
-'      "<td><span class=\\""+statusClass(r.status)+"\\">"+escHtml(r.status)+"</span></td>" +' +
-'      "<td>"+escHtml(r.location||"")+"</td><td>"+escHtml(r.hospital||"")+"</td><td>"+escHtml(r.parentPickup||"")+"</td>" +' +
-'      "<td>"+escHtml(r.dischargeTime||"")+"</td></tr>";' +
+'    html += "<tr><td data-label=\\"班級-座號\\">"+escHtml(r.classSeat)+"</td><td data-label=\\"姓名\\">"+escHtml(r.name)+"</td><td data-label=\\"性別\\">"+escHtml(r.gender||"")+"</td>" +' +
+'      "<td data-label=\\"狀態\\"><span class=\\""+statusClass(r.status)+"\\">"+escHtml(r.status)+"</span></td>" +' +
+'      "<td data-label=\\"休息觀察\\">"+escHtml(r.location||"")+"</td><td data-label=\\"送醫醫院\\">"+escHtml(r.hospital||"")+"</td><td data-label=\\"家長帶離\\">"+escHtml(r.parentPickup||"")+"</td>" +' +
+'      "<td data-label=\\"出院時間\\">"+escHtml(r.dischargeTime||"")+"</td></tr>";' +
 '  });' +
-'  html += "</tbody></table>";' +
+'  html += "</tbody></table></div>";' +
 '  wrap.innerHTML = html;' +
 '}' +
 'function doSearch(){ renderTable(); }' +
