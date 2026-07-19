@@ -55,6 +55,8 @@ const HEADER_NAMES = {
   GENDER: '性別',
   CONTACT: '家人稱謂及緊急聯絡電話',
   SYMPTOM: '身體症狀',
+  HEIGHT: '身高',
+  WEIGHT: '體重',
   CASE_ID: '案件編號',
   SORT_KEY: '排序值',
   TRIAGE: '檢傷初判',
@@ -159,6 +161,109 @@ function gradeToNumber_(gradeText) {
 
 
 // ============================================================
+// ★【身高體重未寫入試算表時執行】刪除舊題目並重建，強制重新建立試算表連結
+function rebuildHeightWeightQuestions() {
+  const form = FormApp.openById(FORM_ID);
+  const items = form.getItems();
+
+  // 先刪除現有的身高體重題目
+  for (let i = items.length - 1; i >= 0; i--) {
+    const title = items[i].getTitle();
+    if (title === '身高' || title === '體重') {
+      form.deleteItem(i);
+    }
+  }
+
+  // 重建
+  form.addTextItem().setTitle('身高').setHelpText('單位：公分，請輸入數字').setRequired(true);
+  form.addTextItem().setTitle('體重').setHelpText('單位：公斤，請輸入數字').setRequired(true);
+
+  // 移動到性別之後
+  const newItems = form.getItems();
+  for (let i = newItems.length - 1; i >= 0; i--) {
+    if (newItems[i].getTitle() === '身高') form.moveItem(newItems[i], 5);
+    if (newItems[i].getTitle() === '體重') form.moveItem(newItems[i], 6);
+  }
+
+  Logger.log('✅ 身高體重題目已重建。請填一份測試表單並送出，Google 會在試算表最後面建立新欄位。');
+}
+
+// ★【步驟 1：先執行】隱藏試算表中舊的身高體重殘留欄位
+function hideOldHeightWeightColumns() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const mainSheet = ss.getSheetByName(SHEET_MAIN);
+  const lastCol = mainSheet.getLastColumn();
+
+  // 先全部取消隱藏
+  mainSheet.showColumns(1, lastCol);
+
+  const headerRow = mainSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  // 找出「身高」「體重」最後一次出現的欄位（表單新資料寫入處）
+  let lastHeight = -1, lastWeight = -1;
+  for (let i = lastCol - 1; i >= 0; i--) {
+    const t = String(headerRow[i] || '').trim();
+    if (t === '身高' && lastHeight === -1) lastHeight = i + 1;
+    if (t === '體重' && lastWeight === -1) lastWeight = i + 1;
+  }
+
+  // 隱藏不是最後一組的身高體重（舊的殘留），以及 _舊欄位_已隱藏
+  let hidden = 0;
+  for (let i = 0; i < lastCol; i++) {
+    const t = String(headerRow[i] || '').trim();
+    const col = i + 1;
+    if (t === '_舊欄位_已隱藏' || t === '_重複_已隱藏') {
+      mainSheet.hideColumns(col);
+      hidden++;
+    } else if (t === '身高' && col !== lastHeight) {
+      mainSheet.getRange(1, col).setValue('_舊欄位_已隱藏');
+      mainSheet.hideColumns(col);
+      hidden++;
+    } else if (t === '體重' && col !== lastWeight) {
+      mainSheet.getRange(1, col).setValue('_舊欄位_已隱藏');
+      mainSheet.hideColumns(col);
+      hidden++;
+    }
+  }
+
+  Logger.log('已隱藏 ' + hidden + ' 個舊欄位。');
+  if (lastHeight > 0) Logger.log('身高保留在第 ' + lastHeight + ' 欄。');
+  if (lastWeight > 0) Logger.log('體重保留在第 ' + lastWeight + ' 欄。');
+  if (lastHeight === -1) Logger.log('⚠ 尚未找到身高欄位，請先填一份含身高體重的測試表單，Google 才會在試算表建立欄位。');
+}
+
+// ★【步驟 2：接著執行】在表單「性別」下方新增身高體重題目
+function addHeightWeightToForm() {
+  const form = FormApp.openById(FORM_ID);
+
+  // 防呆
+  const existing = form.getItems().map(function (item) { return item.getTitle(); });
+  if (existing.indexOf('身高') !== -1 || existing.indexOf('體重') !== -1) {
+    Logger.log('身高或體重題目已存在，略過。');
+    return;
+  }
+
+  form.addTextItem()
+    .setTitle('身高')
+    .setHelpText('單位：公分，請輸入數字')
+    .setRequired(true);
+
+  form.addTextItem()
+    .setTitle('體重')
+    .setHelpText('單位：公斤，請輸入數字')
+    .setRequired(true);
+
+  // 取得剛新增的題目並移動到性別之後（索引 5、6）
+  const items = form.getItems();
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].getTitle() === '身高') form.moveItem(items[i], 5);
+    if (items[i].getTitle() === '體重') form.moveItem(items[i], 6);
+  }
+
+  Logger.log('已新增身高、體重題目，位置在性別下方。');
+  Logger.log('⚠ 試算表中新欄位會出現在最後面（Google 表單行為），系統會自動對應。');
+}
+
 // ★【清理用：刪除表單中身高體重題目】解決 relinkFormToSheet 造成的試算表錯亂後執行
 function removeHeightWeightFromForm() {
   const form = FormApp.openById(FORM_ID);
@@ -173,6 +278,40 @@ function removeHeightWeightFromForm() {
     }
   }
   Logger.log('表格身高體重題目清理完成。');
+}
+
+// ★【relinkFormToSheet 後試算表錯亂時執行】切換到正確的表單回應工作表
+function switchToCorrectResponseSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 找出真正的表單回應工作表（不是「彙整總表」的那個）
+  const sheets = ss.getSheets();
+  let realResponseSheet = null;
+  sheets.forEach(function (s) {
+    const name = s.getName();
+    if (name !== SHEET_MAIN && (name.indexOf('表單回應') !== -1 || name.indexOf('表單回覆') !== -1)) {
+      realResponseSheet = s;
+    }
+  });
+
+  if (!realResponseSheet) {
+    Logger.log('找不到表單回應工作表，請手動檢查試算表。');
+    return;
+  }
+
+  Logger.log('找到表單回應工作表：「' + realResponseSheet.getName() + '」');
+
+  // 刪除舊的「彙整總表」（如果有）
+  const oldMain = ss.getSheetByName(SHEET_MAIN);
+  if (oldMain) {
+    ss.deleteSheet(oldMain);
+    Logger.log('已刪除舊的「彙整總表」。');
+  }
+
+  // 把真正的回應表改名為「彙整總表」
+  realResponseSheet.setName(SHEET_MAIN);
+  Logger.log('已將表單回應表改名為「彙整總表」。');
+  Logger.log('完成。請接著執行 setupSpreadsheet。');
 }
 
 // ★【步驟 A：請執行一次】建立 Google 表單（含性別題目）
@@ -745,10 +884,11 @@ function adminUpdateCase(pwd, caseId, fields) {
     grade: COL.GRADE, classNo: COL.CLASS, seatNo: COL.SEAT, name: COL.NAME,
     gender: COL.GENDER, contact: COL.CONTACT, symptom: COL.SYMPTOM,
     triage: COL.TRIAGE, location: COL.LOCATION, hospital: COL.HOSPITAL,
-    escort: COL.ESCORT, note: COL.NOTE
+    escort: COL.ESCORT, note: COL.NOTE,
+    height: COL.HEIGHT, weight: COL.WEIGHT
   };
   Object.keys(fieldColMap).forEach(function (key) {
-    if (fields[key] !== undefined) {
+    if (fields[key] !== undefined && fieldColMap[key]) {
       mainSheet.getRange(row, fieldColMap[key]).setValue(fields[key]);
     }
   });
@@ -778,6 +918,8 @@ function adminAddCase(pwd, fields) {
   newRow[COL.GENDER - 1] = fields.gender || '';
   newRow[COL.CONTACT - 1] = fields.contact || '';
   newRow[COL.SYMPTOM - 1] = fields.symptom || '';
+  if (COL.HEIGHT) newRow[COL.HEIGHT - 1] = fields.height || '';
+  if (COL.WEIGHT) newRow[COL.WEIGHT - 1] = fields.weight || '';
   newRow[COL.CASE_ID - 1] = caseId;
   newRow[COL.SORT_KEY - 1] = sortKey;
   newRow[COL.STATUS - 1] = '檢傷中';
@@ -1173,6 +1315,8 @@ function buildAdminHtml_() {
 '        <div><label>姓名</label><input type="text" id="f_name"></div>' +
 '        <div><label>性別</label><input type="text" id="f_gender" placeholder="男/女"></div>' +
 '        <div><label>聯絡電話</label><input type="text" id="f_contact"></div>' +
+'        <div><label>身高</label><input type="text" id="f_height" placeholder="公分"></div>' +
+'        <div><label>體重</label><input type="text" id="f_weight" placeholder="公斤"></div>' +
 '      </div>' +
 '      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">' +
 '        <div><label>身體症狀</label><input type="text" id="f_symptom"></div>' +
@@ -1228,7 +1372,7 @@ function buildAdminHtml_() {
 '  editMode = "add";' +
 '  editingCaseId = "";' +
 '  document.getElementById("editTitle").textContent = "新增案件";' +
-'  ["f_grade","f_class","f_seat","f_name","f_gender","f_contact","f_symptom","f_triage","f_location","f_hospital","f_escort","f_note"].forEach(function(id){ document.getElementById(id).value = ""; });' +
+'  ["f_grade","f_class","f_seat","f_name","f_gender","f_contact","f_height","f_weight","f_symptom","f_triage","f_location","f_hospital","f_escort","f_note"].forEach(function(id){ document.getElementById(id).value = ""; });' +
 '  document.getElementById("editCard").classList.remove("hidden");' +
 '}' +
 'function openEditForm(caseId){' +
@@ -1245,6 +1389,8 @@ function buildAdminHtml_() {
 '      document.getElementById("f_name").value = c.name || "";' +
 '      document.getElementById("f_gender").value = c.gender || "";' +
 '      document.getElementById("f_contact").value = c.contact || "";' +
+'      document.getElementById("f_height").value = c.height || "";' +
+'      document.getElementById("f_weight").value = c.weight || "";' +
 '      document.getElementById("f_symptom").value = c.symptom || "";' +
 '      document.getElementById("f_triage").value = c.triage || "";' +
 '      document.getElementById("f_location").value = c.location || "";' +
@@ -1266,6 +1412,8 @@ function buildAdminHtml_() {
 '    name: document.getElementById("f_name").value,' +
 '    gender: document.getElementById("f_gender").value,' +
 '    contact: document.getElementById("f_contact").value,' +
+'    height: document.getElementById("f_height").value,' +
+'    weight: document.getElementById("f_weight").value,' +
 '    symptom: document.getElementById("f_symptom").value,' +
 '    triage: document.getElementById("f_triage").value,' +
 '    location: document.getElementById("f_location").value,' +
